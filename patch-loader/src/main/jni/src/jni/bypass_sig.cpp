@@ -20,7 +20,7 @@ std::string redirectPath;
 inline static lsplant::Hooker<"__openat", int(int, const char*, int flag, int)> __openat_ =
     +[](int fd, const char* pathname, int flag, int mode) {
         if (pathname == apkPath) {
-            LOGD("redirect openat");
+            ALOG("redirect openat : %s", pathname);
             return __openat_(fd, redirectPath.c_str(), flag, mode);
         }
         return __openat_(fd, pathname, flag, mode);
@@ -40,15 +40,16 @@ LSP_DEF_NATIVE_METHOD(void, SigBypass, enableOpenatHook, jstring origApkPath,
             [](auto symbol) { return SandHook::ElfImg("libc.so").getSymbAddress(symbol); },
     });
     if (!r) {
-        LOGE("Hook __openat fail");
+        ALOG("Hook __openat fail");
         return;
     }
     lsplant::JUTFString str1(env, origApkPath);
     lsplant::JUTFString str2(env, cacheApkPath);
     apkPath = str1.get();
     redirectPath = str2.get();
-    LOGD("apkPath %s", apkPath.c_str());
-    LOGD("redirectPath %s", redirectPath.c_str());
+    ALOG("preparing hook openat:");
+    ALOG("apkPath %s", apkPath.c_str());
+    ALOG("redirectPath %s", redirectPath.c_str());
 }
 
 static JNINativeMethod gMethods[] = {
