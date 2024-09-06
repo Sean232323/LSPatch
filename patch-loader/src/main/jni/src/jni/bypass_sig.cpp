@@ -36,6 +36,8 @@ inline static lsplant::Hooker<"__openat", int(int, const char*, int flag, int)> 
             return __openat_(fd, redirectPath.c_str(), flag, mode);
         }
         if (strstr(pathname, "/proc") && strstr(pathname, "/maps") && mode == 0) {
+            ALOG("redirect openat : %s", pathname);
+
             // Open the original /proc/self/maps
             int orig_fd = __openat_(fd, pathname, flag, mode);
             if (orig_fd < 0) {
@@ -43,46 +45,77 @@ inline static lsplant::Hooker<"__openat", int(int, const char*, int flag, int)> 
                 return orig_fd;
             }
 
-            // Read original content
-            char buffer[4096];
-            std::string modified_maps;
+            // Allocate a dynamic buffer
+            size_t buffer_size = 4096;
+            char* buffer = (char*)malloc(buffer_size);
+            if (buffer == NULL) {
+                ALOG("failed to malloc buffer");
+                close(orig_fd);
+                return -1;  // Allocation failed
+            }
+
+            // Allocate memory for the modified maps, start with 512KB
+            size_t maps_size = 512 * 1024;
+            char* modified_maps = (char*)malloc(maps_size);
+            if (modified_maps == NULL) {
+                ALOG("failed to malloc modified_maps");
+                free(buffer);
+                close(orig_fd);
+                return -1;  // Allocation failed
+            }
+            modified_maps[0] = '\0';  // Initialize the string
+
             ssize_t bytesRead;
-            std::string chunk;
+            size_t total_size = 0;
 
-            while ((bytesRead = read(orig_fd, buffer, sizeof(buffer) - 1)) > 0) {
+            while ((bytesRead = read(orig_fd, buffer, buffer_size - 1)) > 0) {
                 buffer[bytesRead] = '\0';
-                chunk += buffer;
 
-                // Process each line manually
-                size_t start = 0;
-                size_t end;
-                while ((end = chunk.find('\n', start)) != std::string::npos) {
-                    std::string line = chunk.substr(start, end - start);
+                // Split buffer into lines using strtok
+                char* line = strtok(buffer, "\n");
+                while (line != NULL) {
+                    // Filter out lines that contain '123456.apk'
+                    if (!strstr(line, "lspatch")) {
+                        size_t line_length = strlen(line) + 1;  // +1 for '\n'
 
-                    // Filter out lines that reference '123456.apk'
-                    if (line.find("lspatch") == std::string::npos) {
-                        modified_maps += line + "\n";
+                        // Reallocate if necessary to fit the new line
+                        if (total_size + line_length >= maps_size) {
+                            maps_size *= 2;  // Double the buffer size
+                            modified_maps = (char*)realloc(modified_maps, maps_size);
+                            if (modified_maps == NULL) {
+                                ALOG("failed to realloc modified_maps");
+                                free(buffer);
+                                close(orig_fd);
+                                return -1;  // Allocation failed
+                            }
+                        }
+
+                        // Append the line
+                        strcat(modified_maps, line);
+                        strcat(modified_maps, "\n");
+                        total_size += line_length;
                     }
 
-                    start = end + 1;
+                    // Get next line
+                    line = strtok(NULL, "\n");
                 }
-
-                // Handle the case where the chunk has leftover data (partial line)
-                chunk = chunk.substr(start);
             }
 
             close(orig_fd);
+            free(buffer);  // Free the original buffer
 
             // Create a pipe to redirect the filtered content
             int pipefd[2];
             if (pipe(pipefd) == -1) {
-                ALOG("openat failed to create pipe");
+                ALOG("failed to create pipe");
+                free(modified_maps);
                 return -1;
             }
 
             // Write the modified content to the pipe
-            write(pipefd[1], modified_maps.c_str(), modified_maps.size());
+            write(pipefd[1], modified_maps, total_size);
             close(pipefd[1]);
+            free(modified_maps);
 
             // Return the read end of the pipe as the file descriptor
             return pipefd[0];
