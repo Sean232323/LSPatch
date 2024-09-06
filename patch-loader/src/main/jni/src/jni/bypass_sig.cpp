@@ -3,9 +3,6 @@
 //
 
 #include "bypass_sig.h"
-//
-#include <sstream>
-//
 
 #include "../src/native_api.h"
 #include "elf_util.h"
@@ -25,7 +22,6 @@ namespace lspd {
 std::string apkPath;
 std::string redirectPath;
 int counter;
-
     bool WriteAddr(void *addr, void *buffer, size_t length) {
         unsigned long page_size = sysconf(_SC_PAGESIZE);
         unsigned long size = page_size * sizeof(uintptr_t);
@@ -39,14 +35,11 @@ inline static lsplant::Hooker<"__openat", int(int, const char*, int flag, int)> 
             ALOG("redirect openat : %s", pathname);
             return __openat_(fd, redirectPath.c_str(), flag, mode);
         }
-        if (strstr(pathname, "/proc") && strstr(pathname, "/maps") && mode == 0)
-        {
-            ALOG("redirect openat : %s", pathname);
-
+        if (strstr(pathname, "/proc") && strstr(pathname, "/maps") && mode == 0) {
             // Open the original /proc/self/maps
             int orig_fd = __openat_(fd, pathname, flag, mode);
             if (orig_fd < 0) {
-                ALOG("failed openat : %s", pathname);
+                ALOG("failed to openat : %s", pathname);
                 return orig_fd;
             }
 
@@ -54,25 +47,36 @@ inline static lsplant::Hooker<"__openat", int(int, const char*, int flag, int)> 
             char buffer[4096];
             std::string modified_maps;
             ssize_t bytesRead;
+            std::string chunk;
+
             while ((bytesRead = read(orig_fd, buffer, sizeof(buffer) - 1)) > 0) {
                 buffer[bytesRead] = '\0';
-                std::string chunk(buffer);
+                chunk += buffer;
 
-                // Filter out lines that reference '123456.apk'
-                std::istringstream stream(chunk);
-                std::string line;
-                while (std::getline(stream, line)) {
+                // Process each line manually
+                size_t start = 0;
+                size_t end;
+                while ((end = chunk.find('\n', start)) != std::string::npos) {
+                    std::string line = chunk.substr(start, end - start);
+
+                    // Filter out lines that reference '123456.apk'
                     if (line.find("lspatch") == std::string::npos) {
                         modified_maps += line + "\n";
                     }
+
+                    start = end + 1;
                 }
+
+                // Handle the case where the chunk has leftover data (partial line)
+                chunk = chunk.substr(start);
             }
+
             close(orig_fd);
 
             // Create a pipe to redirect the filtered content
             int pipefd[2];
             if (pipe(pipefd) == -1) {
-                ALOG("failed to pipe");
+                ALOG("openat failed to create pipe");
                 return -1;
             }
 
