@@ -1,0 +1,63 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build patch-loader
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: '%compiler% -dumpmachine; %compiler% -dumpversion'
+      CCACHE_NOHASHDIR: 'true'
+      CCACHE_HARDLINK: 'true'
+      CCACHE_BASEDIR: '${{ github.workspace }}'
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+        fetch-depth: 0
+
+    - name: Write key
+      if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+      run: |
+        if [ ! -z "${{ secrets.KEY_STORE }}" ]; then
+          echo androidStorePassword='${{ secrets.KEY_STORE_PASSWORD }}' >> gradle.properties
+          echo androidKeyAlias='${{ secrets.ALIAS }}' >> gradle.properties
+          echo androidKeyPassword='${{ secrets.KEY_PASSWORD }}' >> gradle.properties
+          echo androidStoreFile='key.jks' >> gradle.properties
+          echo ${{ secrets.KEY_STORE }} | base64 --decode > key.jks
+        fi
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-home-cache-cleanup: true
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+
+    - name: Build patch-loader with Gradle
+      run: |
+        echo 'org.gradle.jvmargs=-Xmx2048m' >> gradle.properties
+        ./gradlew :patch-loader:assembleRelease
+
+    - name: Upload Release artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: patch-loader-release-${{ github.sha }}
+        path: path/to/patch-loader/output/*
+
+    - name: Set short commit id
+      run: echo "commit=$(echo ${{ github.sha }} | cut -c-7)" > $GITHUB_ENV
