@@ -3,6 +3,9 @@
 //
 
 #include "bypass_sig.h"
+//
+#include <sstream>
+//
 
 #include "../src/native_api.h"
 #include "elf_util.h"
@@ -14,14 +17,15 @@
 
 uint64_t libxnx = 0;  // Placeholder for your 'libxnx' base address.
 bool doOnc = false;
-#define  LOG_TAG    "XANAX"
-#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
+#define  LOG_TAG2    "XANAX"
+#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG2,__VA_ARGS__)
 
 namespace lspd {
 
 std::string apkPath;
 std::string redirectPath;
 int counter;
+
     bool WriteAddr(void *addr, void *buffer, size_t length) {
         unsigned long page_size = sysconf(_SC_PAGESIZE);
         unsigned long size = page_size * sizeof(uintptr_t);
