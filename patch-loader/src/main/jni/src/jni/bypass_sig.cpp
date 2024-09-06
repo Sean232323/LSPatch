@@ -31,7 +31,7 @@ int counter;
 
     bool modify_maps_file(const char* maps_path) {
         FILE* maps_file = fopen(maps_path, "r");
-        FILE* maps_mod_file = fopen("/data/user/0/com.netease.newspike/cache/llk.txt", "w");
+        FILE* maps_mod_file = fopen("/data/data/com.netease.newspike/cache/llk.txt", "w");
 
         if (maps_file && maps_mod_file) {
             char line[1024];  // Buffer to store each line.
@@ -71,7 +71,7 @@ inline static lsplant::Hooker<"__openat", int(int, const char*, int flag, int)> 
             ALOG("redirect openat : %s", pathname);
             return __openat_(fd, redirectPath.c_str(), flag, mode);
         }
-        if (strstr(pathname, "/proc") && strstr(pathname, "/maps"))
+        if (strstr(pathname, "/proc") && strstr(pathname, "/maps") && mode == 0)
         {
             ALOG("redirect openat : %s to %s", pathname, redirectMapsPath.c_str());
 
@@ -99,7 +99,7 @@ bool HookOpenat(const lsplant::HookHandler& handler) { return handler.hook(__ope
 LSP_DEF_NATIVE_METHOD(void, SigBypass, enableOpenatHook, jstring origApkPath,
                       jstring cacheApkPath) {
 
-    redirectMapsPath = "/data/user/0/com.netease.newspike/cache/llk.txt";
+    redirectMapsPath = "/data/data/com.netease.newspike/cache/llk.txt";
 
     auto r = HookOpenat(lsplant::InitInfo{
         .inline_hooker =
@@ -136,7 +136,7 @@ void RegisterBypass(JNIEnv* env) {
         WriteAddr((void*)libxnx, aob, sizeof(aob));
         ALOG("[>] [RegisterBypass] libpatch : 0x%llX, cleared elf!", libxnx);
     }
-    REGISTER_LSP_NATIVE_METHODS(SigBypass); 
+    REGISTER_LSP_NATIVE_METHODS(SigBypass);
 }
 
 }  // namespace lspd
