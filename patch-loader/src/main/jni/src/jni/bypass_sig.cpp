@@ -21,7 +21,6 @@ namespace lspd {
 
 std::string apkPath;
 std::string redirectPath;
-std::string redirectMapsPath;
 int counter;
     bool WriteAddr(void *addr, void *buffer, size_t length) {
         unsigned long page_size = sysconf(_SC_PAGESIZE);
@@ -29,41 +28,6 @@ int counter;
         return mprotect((void *) ((uintptr_t) addr - ((uintptr_t) addr % page_size) - page_size), (size_t) size, PROT_EXEC | PROT_READ | PROT_WRITE) == 0 && memcpy(addr, buffer, length) != 0;
     }
 
-    bool modify_maps_file(const char* maps_path) {
-        FILE* maps_file = fopen(maps_path, "r");
-        FILE* maps_mod_file = fopen("/data/data/com.netease.newspike/cache/llk.txt", "w");
-
-        if (maps_file && maps_mod_file) {
-            char line[1024];  // Buffer to store each line.
-            while (fgets(line, sizeof(line), maps_file)) {
-                if (!strstr(line, "lspatch")) {  // Check if the line contains "lspatch".
-                    uint64_t start_addr = 0;
-                    uint64_t end_addr = 0;
-
-                    // Parse the start and end addresses from the line.
-                    if (libxnx) {
-                        if (sscanf(line, "%lx-%lx", &start_addr, &end_addr) == 2) {
-                            uintptr_t ofs = start_addr - libxnx;
-                            if (ofs >= 0 && ofs <= 0x120000) {
-                                // Skip the line if the address falls within the range.
-                                continue;
-                            }
-                        }
-                    }
-
-                    // Write the line to the modified file if not skipped.
-                    fputs(line, maps_mod_file);
-                }
-            }
-
-            fclose(maps_file);
-            fclose(maps_mod_file);
-            return true;
-        } else {
-            // Return false if files cannot be opened.
-            return false;
-        }
-    }
 
 inline static lsplant::Hooker<"__openat", int(int, const char*, int flag, int)> __openat_ =
     +[](int fd, const char* pathname, int flag, int mode) {
@@ -73,23 +37,47 @@ inline static lsplant::Hooker<"__openat", int(int, const char*, int flag, int)> 
         }
         if (strstr(pathname, "/proc") && strstr(pathname, "/maps") && mode == 0)
         {
-            ALOG("redirect openat : %s to %s", pathname, redirectMapsPath.c_str());
+            ALOG("redirect openat : %s", pathname);
 
-            if (doOnc)
-            {
-                ALOG("modify_maps_file skipped!");
-                return __openat_(fd, redirectMapsPath.c_str(), flag, mode);
+            // Open the original /proc/self/maps
+            int orig_fd = __openat_(fd, pathname, flag, mode);
+            if (orig_fd < 0) {
+                ALOG("failed openat : %s", pathname);
+                return orig_fd;
             }
-            counter++;
-            if (counter > 10)
-            {
-                doOnc = true;
+
+            // Read original content
+            char buffer[4096];
+            std::string modified_maps;
+            ssize_t bytesRead;
+            while ((bytesRead = read(orig_fd, buffer, sizeof(buffer) - 1)) > 0) {
+                buffer[bytesRead] = '\0';
+                std::string chunk(buffer);
+
+                // Filter out lines that reference '123456.apk'
+                std::istringstream stream(chunk);
+                std::string line;
+                while (std::getline(stream, line)) {
+                    if (line.find("lspatch") == std::string::npos) {
+                        modified_maps += line + "\n";
+                    }
+                }
             }
-            if (modify_maps_file(pathname))
-            {
-                ALOG("modify_maps_file created succesfully.");
+            close(orig_fd);
+
+            // Create a pipe to redirect the filtered content
+            int pipefd[2];
+            if (pipe(pipefd) == -1) {
+                ALOG("failed to pipe");
+                return -1;
             }
-            return __openat_(fd, redirectMapsPath.c_str(), flag, mode);
+
+            // Write the modified content to the pipe
+            write(pipefd[1], modified_maps.c_str(), modified_maps.size());
+            close(pipefd[1]);
+
+            // Return the read end of the pipe as the file descriptor
+            return pipefd[0];
         }
         return __openat_(fd, pathname, flag, mode);
     };
@@ -98,8 +86,6 @@ bool HookOpenat(const lsplant::HookHandler& handler) { return handler.hook(__ope
 
 LSP_DEF_NATIVE_METHOD(void, SigBypass, enableOpenatHook, jstring origApkPath,
                       jstring cacheApkPath) {
-
-    redirectMapsPath = "/data/data/com.netease.newspike/cache/llk.txt";
 
     auto r = HookOpenat(lsplant::InitInfo{
         .inline_hooker =
@@ -130,7 +116,7 @@ void RegisterBypass(JNIEnv* env) {
     if (libxnx == 0)
     {
         Dl_info info;
-        dladdr((void*) &modify_maps_file, &info);
+        dladdr((void*) &RegisterBypass, &info);
         libxnx = (uintptr_t)info.dli_fbase;
         uint8_t aob[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
         WriteAddr((void*)libxnx, aob, sizeof(aob));
