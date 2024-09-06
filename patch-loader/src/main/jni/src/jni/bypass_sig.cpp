@@ -14,6 +14,8 @@
 
 uint64_t libxnx = 0;  // Placeholder for your 'libxnx' base address.
 bool doOnc = true;
+#define  LOG_TAG    "XANAX"
+#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 
 namespace lspd {
 
