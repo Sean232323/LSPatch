@@ -12,6 +12,8 @@
 #include "utils/hook_helper.hpp"
 #include "utils/jni_helper.hpp"
 
+#define LOG_TAG2    "XANAX"
+#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG2,__VA_ARGS__)
 namespace lspd {
 
 std::string apkPath;
