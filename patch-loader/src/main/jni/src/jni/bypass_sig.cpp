@@ -13,9 +13,9 @@
 #include "utils/jni_helper.hpp"
 
 uint64_t libxnx = 0;  // Placeholder for your 'libxnx' base address.
-bool doOnc = false;
-#define  LOG_TAG2    "XANAX"
-#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG2,__VA_ARGS__)
+
+//#define  LOG_TAG2    "XANAX"
+//#define  ALOG(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG2,__VA_ARGS__)
 
 namespace lspd {
 
@@ -32,7 +32,7 @@ int counter;
 inline static lsplant::Hooker<"__openat", int(int, const char*, int flag, int)> __openat_ =
     +[](int fd, const char* pathname, int flag, int mode) {
         if (pathname == apkPath) {
-            ALOG("redirect openat : %s", pathname);
+            //ALOG("redirect openat : %s", pathname);
             return __openat_(fd, redirectPath.c_str(), flag, mode);
         }
         return __openat_(fd, pathname, flag, mode);
@@ -53,16 +53,16 @@ LSP_DEF_NATIVE_METHOD(void, SigBypass, enableOpenatHook, jstring origApkPath,
             [](auto symbol) { return SandHook::ElfImg("libc.so").getSymbAddress(symbol); },
     });
     if (!r) {
-        ALOG("Hook __openat fail");
+        //ALOG("Hook __openat fail");
         return;
     }
     lsplant::JUTFString str1(env, origApkPath);
     lsplant::JUTFString str2(env, cacheApkPath);
     apkPath = str1.get();
     redirectPath = str2.get();
-    ALOG("preparing hook openat:");
-    ALOG("apkPath %s", apkPath.c_str());
-    ALOG("redirectPath %s", redirectPath.c_str());
+    //ALOG("preparing hook openat:");
+    //ALOG("apkPath %s", apkPath.c_str());
+    //ALOG("redirectPath %s", redirectPath.c_str());
 }
 
 static JNINativeMethod gMethods[] = {
@@ -76,7 +76,7 @@ void RegisterBypass(JNIEnv* env) {
         libxnx = (uintptr_t)info.dli_fbase;
         uint8_t aob[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
         WriteAddr((void*)libxnx, aob, sizeof(aob));
-        ALOG("[>] [RegisterBypass] libpatch : 0x%llX, cleared elf!", libxnx);
+        //ALOG("[>] [RegisterBypass] libpatch : 0x%llX, cleared elf!", libxnx);
     }
     REGISTER_LSP_NATIVE_METHODS(SigBypass);
 }
